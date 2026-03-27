@@ -1,13 +1,3 @@
----
-title: Agentic Travel Planner with Multiple Agents and A2A Protocol
-emoji: ✈️
-colorFrom: gray
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Agentic Travel Planner with Multiple Agents and A2A Protocol
 
 A multi-agent travel planning system where specialist agents negotiate under user constraints, critique one another, and produce an explainable final itinerary. The system is deployed on Hugging Face Spaces and uses official A2A SDK-backed agent routes plus agent-card discovery.
