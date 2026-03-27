@@ -1,0 +1,13 @@
+fastapi==0.115.8
+uvicorn[standard]==0.34.0
+pydantic>=2.11.3,<3.0.0
+python-dotenv==1.0.1
+httpx==0.28.1
+orjson==3.10.15
+tenacity==9.0.0
+huggingface_hub>=0.31.0
+
+gradio==5.17.1
+duckduckgo-search==7.5.5
+
+a2a-sdk[http-server]==0.3.25
