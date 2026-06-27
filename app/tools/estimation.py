@@ -4,6 +4,7 @@ from app.models.trip import TripRequest
 def estimate_base_trip_cost(trip: TripRequest) -> float:
     travelers = trip.travelers or 1
     days = trip.num_days or 3
+    nights = max(1, days - 1)
 
     style = (trip.travel_style or "").lower()
 
@@ -26,7 +27,7 @@ def estimate_base_trip_cost(trip: TripRequest) -> float:
         activities_per_day = 15
 
     total = (
-        hotel_per_night * days
+        hotel_per_night * nights
         + food_per_day * days * travelers
         + local_transport_per_day * days * travelers
         + activities_per_day * days * travelers

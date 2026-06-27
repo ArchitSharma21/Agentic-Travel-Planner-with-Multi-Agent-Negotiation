@@ -11,6 +11,7 @@ class AgentProposal(BaseModel):
     cons: List[str] = Field(default_factory=list)
     objections: List[str] = Field(default_factory=list)
     estimated_cost: Optional[float] = None
+    cost_currency: Optional[str] = None
     confidence: float = 0.5
 
 

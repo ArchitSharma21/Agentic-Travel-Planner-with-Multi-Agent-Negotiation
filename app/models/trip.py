@@ -9,6 +9,7 @@ class TripRequest(BaseModel):
     end_date: Optional[str] = None
     num_days: Optional[int] = None
     budget_total: Optional[float] = None
+    budget_currency: Optional[str] = None
     travelers: Optional[int] = 1
     travel_style: Optional[str] = None
     hard_constraints: List[str] = Field(default_factory=list)
@@ -42,6 +43,7 @@ class DayPlan(BaseModel):
 class FinalItinerary(BaseModel):
     summary: str
     hotel_area: Optional[str] = None
+    cost_currency: str = "EUR"
     transport_notes: List[str] = Field(default_factory=list)
     activities: List[ActivityOption] = Field(default_factory=list)
     daily_plan: List[DayPlan] = Field(default_factory=list)

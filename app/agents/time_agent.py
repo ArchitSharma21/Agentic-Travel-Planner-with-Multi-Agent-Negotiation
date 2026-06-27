@@ -7,11 +7,18 @@ class TimeOptimizerAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="time_optimizer_agent", system_prompt=TIME_AGENT_PROMPT, temperature=0.2)
 
-    def propose(self, trip_request: dict, evidence: list[dict], prior_proposals: list[dict]) -> AgentProposal:
+    def propose(
+        self,
+        trip_request: dict,
+        evidence: list[dict],
+        prior_proposals: list[dict],
+        llm_config: dict | None = None,
+    ) -> AgentProposal:
         payload = {
             "trip_request": trip_request,
             "evidence": evidence,
             "prior_proposals": prior_proposals,
         }
-        data = self.invoke_json(payload)
+        data = self.invoke_json(payload, llm_config=llm_config)
+        data = self.normalize_proposal(data, default_objective="maximize time efficiency")
         return AgentProposal(**data)

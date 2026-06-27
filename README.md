@@ -17,7 +17,7 @@ The final output is not just an itinerary. It also includes:
 - a debate trace
 - rejected alternatives
 - final decision rationale
-- estimated total cost
+- estimated total cost with explicit currency
 - warnings when assumptions are necessary
 
 ## Core ideas demonstrated
@@ -87,7 +87,7 @@ Final Itinerary + Debate Trace + Rejected Alternatives
 * FastAPI
 * Gradio
 * Pydantic
-* Hugging Face Inference API / Inference Providers
+* Gemini API by default, with optional OpenAI, Anthropic, and xAI provider support
 * official A2A Python SDK
 * DuckDuckGo / web search based evidence retrieval
 * Hugging Face Docker Spaces
@@ -160,7 +160,7 @@ Plan a 4-day solo trip to Barcelona in May under 900 euros. I like museums, food
 ## Example output
 
 * final itinerary
-* estimated total cost
+* estimated total cost with explicit currency
 * day-by-day plan
 * debate trace
 * rejected alternatives
@@ -178,12 +178,56 @@ pip install -r requirements.txt
 Set environment variables in a `.env` file:
 
 ```bash
-HF_TOKEN=your_huggingface_token
-HF_MODEL=your_model_id
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_google_ai_studio_key
+GEMINI_MODEL=gemini-3.1-flash-lite
+GEMINI_FALLBACK_MODEL=gemini-2.5-flash
+GEMINI_RATE_LIMIT_RETRIES=1
+GEMINI_MAX_RETRY_DELAY_SECONDS=75
+GEMINI_MIN_SECONDS_BETWEEN_REQUESTS=0
 APP_ENV=dev
 MAX_NEGOTIATION_ROUNDS=1
 DEFAULT_DESTINATION=Paris
+SERVER_GEMINI_DAILY_CALL_LIMIT=30
 ```
+
+The Gradio UI also lets users pick a provider/model and enter a per-run API key without saving it. Supported provider values and default model environment variables are:
+
+```bash
+gemini      # GEMINI_API_KEY or GOOGLE_API_KEY, GEMINI_MODEL
+openai      # OPENAI_API_KEY, OPENAI_MODEL
+anthropic   # ANTHROPIC_API_KEY, ANTHROPIC_MODEL
+xai         # XAI_API_KEY, XAI_MODEL
+```
+
+Default model names:
+
+```bash
+GEMINI_MODEL=gemini-3.1-flash-lite
+GEMINI_FALLBACK_MODEL=gemini-2.5-flash
+GEMINI_RATE_LIMIT_RETRIES=1
+GEMINI_MAX_RETRY_DELAY_SECONDS=75
+GEMINI_MIN_SECONDS_BETWEEN_REQUESTS=0
+OPENAI_MODEL=gpt-4o-mini
+ANTHROPIC_MODEL=claude-3-5-haiku-latest
+XAI_MODEL=grok-3-mini
+```
+
+When users leave the API key field blank and the app uses the shared Gemini key, this project is limited to 30 Gemini API calls per day by default. A normal plan uses about 6 LLM calls before retries or fallback calls, so the public demo should be treated as roughly 3 full live plans per day before users are asked to bring their own key. User-supplied API keys are not limited by the project counter.
+
+For a portfolio deployment on a shared free API key, keep the default Gemini model on `gemini-3.1-flash-lite`. When a user provides their own Gemini key, the app automatically falls back to `gemini-2.5-flash` if Flash-Lite returns a temporary 503 high-demand response. Set `GEMINI_FALLBACK_MODEL=` to disable that fallback.
+
+Gemini specialist-agent calls use the same A2A orchestration as the other providers. Specialist agents run in parallel through A2A, while the app-level daily cap protects the shared demo key from being exhausted too quickly.
+
+The UI includes a Demo mode checkbox for portfolio walkthroughs. Demo mode uses deterministic mock agent proposals, critic notes, evidence, and final itinerary generation without calling search or any LLM provider. It preserves the same public response shape and negotiation trace so viewers can understand the multi-agent workflow even when provider quotas are exhausted.
+
+The app handles web retrieval itself through DuckDuckGo and passes compact evidence to the LLM, so Gemini does not need native web browsing/search grounding for the planner to work.
+
+Cost estimates are planning estimates, not guaranteed quotes. Agents are prompted to use realistic expected spend rather than filling the user's maximum budget, count lodging by nights instead of every calendar day, exclude inbound/outbound flights unless requested, and include a `cost_currency` field such as `EUR`, `USD`, `GBP`, `JPY`, or `INR` in the final itinerary.
+
+Free and low-cost model tiers can occasionally return temporary high-demand, quota, or rate-limit errors. Consecutive requests can hit per-minute Gemini quota even with a user-provided key. If the error says "Please retry in 18s" or similar, wait at least that long before sending another request. The app automatically retries Gemini 429 delays up to `GEMINI_MAX_RETRY_DELAY_SECONDS`, but persistent quota errors still need a cooldown. DuckDuckGo search can also rate-limit automated requests. The planner degrades gracefully when this happens, but users can improve reliability by choosing a stronger model, waiting for the indicated cooldown, bringing their own API key, or using Demo mode.
+
+If every specialist agent falls back because the provider is rate-limiting, the planner skips the critic and final merge calls to avoid wasting additional quota on a result that cannot improve. The diagnostics panel names the specialist, critic, or final-merge stage that hit the failure.
 
 Start the app:
 
@@ -198,8 +242,13 @@ Use a Docker Space.
 Set these Space secrets:
 
 ```bash
-HF_TOKEN
-HF_MODEL
+LLM_PROVIDER
+GEMINI_API_KEY
+GEMINI_MODEL
+GEMINI_FALLBACK_MODEL
+SERVER_GEMINI_DAILY_CALL_LIMIT
 ```
+
+If you want to use another provider as the Space default, set the matching API key and model secrets from the provider list above. Users can still override the default provider/key from the UI for a single run.
 
 Make sure the app serves on port `7860`.

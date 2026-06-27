@@ -11,8 +11,12 @@ class IntentAgent(BaseAgent):
             temperature=0.0,
         )
 
-    def parse_request(self, raw_user_input: str) -> TripRequest:
-        data = self.invoke_json({"user_request": raw_user_input})
+    def parse_request(
+        self,
+        raw_user_input: str,
+        llm_config: dict | None = None,
+    ) -> TripRequest:
+        data = self.invoke_json({"user_request": raw_user_input}, llm_config=llm_config)
         normalized = self._normalize_trip_request(data)
         return TripRequest(**normalized)
 
@@ -43,6 +47,8 @@ class IntentAgent(BaseAgent):
                 data["budget_total"] = float(data["budget_total"])
             except (TypeError, ValueError):
                 data["budget_total"] = None
+
+        data["budget_currency"] = self._normalize_currency(data.get("budget_currency"))
 
         # hard constraints
         data["hard_constraints"] = self._normalize_string_list(
