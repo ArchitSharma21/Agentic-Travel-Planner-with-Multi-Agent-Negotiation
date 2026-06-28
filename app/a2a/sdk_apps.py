@@ -30,6 +30,7 @@ def _budget_handler(payload: dict) -> dict:
         trip_request=payload.get("trip_request", {}),
         evidence=payload.get("evidence", []),
         prior_proposals=payload.get("prior_proposals", []),
+        pricing_context=payload.get("pricing_context", {}),
         llm_config=payload.get("llm_config"),
     )
     return proposal.model_dump()
@@ -40,6 +41,7 @@ def _experience_handler(payload: dict) -> dict:
         trip_request=payload.get("trip_request", {}),
         evidence=payload.get("evidence", []),
         prior_proposals=payload.get("prior_proposals", []),
+        pricing_context=payload.get("pricing_context", {}),
         llm_config=payload.get("llm_config"),
     )
     return proposal.model_dump()
@@ -50,6 +52,7 @@ def _time_handler(payload: dict) -> dict:
         trip_request=payload.get("trip_request", {}),
         evidence=payload.get("evidence", []),
         prior_proposals=payload.get("prior_proposals", []),
+        pricing_context=payload.get("pricing_context", {}),
         llm_config=payload.get("llm_config"),
     )
     return proposal.model_dump()
@@ -60,6 +63,7 @@ def _critic_handler(payload: dict) -> dict:
         trip_request=payload.get("trip_request", {}),
         evidence=payload.get("evidence", []),
         proposals=payload.get("proposals", []),
+        pricing_context=payload.get("pricing_context", {}),
         llm_config=payload.get("llm_config"),
     )
 

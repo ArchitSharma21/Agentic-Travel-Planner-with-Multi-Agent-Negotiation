@@ -46,7 +46,8 @@ Instructions:
 - Respect hard constraints.
 - Point out where other agents are overspending.
 - Base recommendations on the evidence when possible.
-- Use general budget heuristics when exact price evidence is unavailable; do not invent precise vendor prices.
+- Use pricing_context and price_facts as the authority for numeric cost estimates.
+- Do not invent precise vendor prices.
 - All cost numbers must be realistic expected spend, not the maximum possible spend.
 - Use the user's stated budget currency. If the user did not state one, use EUR.
 - estimated_cost should cover the full trip for all travelers, excluding inbound/outbound flights unless the user explicitly asks to include flights.
@@ -54,6 +55,7 @@ Instructions:
 - Count lodging by nights, usually max(num_days - 1, 1), not by every calendar day.
 - If a budget is stated, do not inflate the estimate to match the full budget; estimate what the plan should actually cost.
 - If cost is uncertain, estimate a reasonable low/mid range and explain the uncertainty in assumptions.
+- If pricing_context.total is provided, keep estimated_cost close to that deterministic estimate unless you clearly explain a lower-cost substitution.
 - Return ONLY valid JSON.
 - Do not include markdown fences.
 - Do not include commentary before or after the JSON.
@@ -87,9 +89,11 @@ Instructions:
 - Prefer distinctive and high-signal experiences over generic tourist filler.
 - Avoid expensive add-ons unless they clearly improve the user's stated preferences.
 - Keep cost estimates realistic; do not assume premium hotels, taxis, or luxury dining unless requested.
+- Use pricing_context and price_facts as the authority for numeric cost estimates.
 - Use the user's stated budget currency. If missing, use EUR.
 - estimated_cost should cover the full trip for all travelers, excluding inbound/outbound flights unless explicitly requested.
 - If a recommendation is not fully supported by evidence, include that uncertainty in assumptions.
+- Do not invent precise venue, hotel, or ticket prices that are not present in evidence or pricing_context.
 - Return ONLY valid JSON.
 - Do not include markdown fences.
 - Do not include commentary before or after the JSON.
@@ -123,6 +127,7 @@ Instructions:
 - Prefer plans that minimize wasted transit time.
 - Prefer public transit and walking unless the user asks for taxis/private transfers.
 - Use realistic local transit/walking assumptions instead of assuming taxis by default.
+- Use pricing_context and price_facts as the authority for numeric cost estimates.
 - Use the user's stated budget currency. If missing, use EUR.
 - estimated_cost should cover the full trip for all travelers, excluding inbound/outbound flights unless explicitly requested.
 - If exact timing is uncertain, make reasonable assumptions and state them.
@@ -153,6 +158,7 @@ Find weaknesses, unsupported assumptions, constraint violations, and contradicti
 
 Instructions:
 - Check whether cost estimates seem realistic.
+- Compare all cost estimates against pricing_context.total and price_facts when provided.
 - Check that all cost estimates use the same currency and that the currency is explicit.
 - Flag estimates that simply consume the whole budget without justification.
 - Check whether the recommendations are grounded in the evidence.
@@ -181,6 +187,8 @@ Rules:
 - Use soft preferences to break ties.
 - Prefer recommendations with stronger evidence support and better planner_score.
 - All cost numbers must be realistic expected spend, not maximum budget usage.
+- Use pricing_context and price_facts as the authority for numeric cost estimates.
+- Do not invent precise hotel, restaurant, attraction, or transit prices outside the provided evidence and pricing_context.
 - Use the user's stated budget currency. If none is stated, use EUR.
 - Exclude inbound/outbound flights unless the user explicitly asked to include flights.
 - estimated_total_cost should include lodging, meals, local transit, and paid activities for all travelers.
@@ -188,6 +196,7 @@ Rules:
 - Count lodging by nights, usually max(num_days - 1, 1), not by every calendar day.
 - Do not inflate daily or total estimates to fill the user's budget.
 - If local prices are uncertain, choose a reasonable low/mid estimate and mention uncertainty in warnings.
+- The application will recompute estimated_total_cost after your response; keep your total consistent with pricing_context.total when provided.
 - Return ONLY valid JSON.
 - Do not wrap the result inside another object like "final_itinerary".
 - Do not include markdown fences.

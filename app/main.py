@@ -8,6 +8,7 @@ from app.config import settings
 from app.graph.planner import TravelPlanner
 from app.ui.gradio_app import build_gradio_app
 from app.a2a.sdk_apps import register_official_a2a_apps
+from app.mcp.travel_context_server import mcp as travel_context_mcp
 from app.usage_limits import UsageLimitExceeded
 
 
@@ -20,12 +21,14 @@ class PlanRequest(BaseModel):
 
 
 planner = TravelPlanner()
+mcp_protocol_app = travel_context_mcp.streamable_http_app()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.validate_required()
-    yield
+    async with travel_context_mcp.session_manager.run():
+        yield
     await planner.aclose()
 
 
@@ -36,11 +39,27 @@ app = FastAPI(
 )
 
 register_official_a2a_apps(app)
+app.router.routes.extend(mcp_protocol_app.routes)
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/mcp")
+async def mcp_status():
+    return {
+        "status": "ok",
+        "name": "agentic-travel-context",
+        "protocol": "streamable-http",
+        "protocol_url": "/mcp/protocol",
+        "tools": [
+            "search_destination",
+            "estimate_trip_cost",
+            "build_travel_context",
+        ],
+    }
 
 
 @app.post("/plan")

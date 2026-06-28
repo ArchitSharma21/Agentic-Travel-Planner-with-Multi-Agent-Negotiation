@@ -12,5 +12,6 @@ async def handle_critic_task(payload: dict) -> dict:
         trip_request=task.trip_request,
         evidence=task.evidence,
         proposals=task.proposals,
+        pricing_context=task.pricing_context,
     )
     return result

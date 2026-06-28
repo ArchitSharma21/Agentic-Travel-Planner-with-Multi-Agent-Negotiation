@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from app.models.trip import TripRequest, WebEvidence, FinalItinerary
+from app.models.trip import TripCostBreakdown, TripRequest, WebEvidence, FinalItinerary
 from app.models.agent import AgentProposal, DebateRound
 
 
@@ -8,6 +8,7 @@ class PlannerState(BaseModel):
     raw_user_input: str
     trip_request: Optional[TripRequest] = None
     evidence: List[WebEvidence] = Field(default_factory=list)
+    cost_breakdown: Optional[TripCostBreakdown] = None
     current_round: int = 0
     proposals: List[AgentProposal] = Field(default_factory=list)
     debate_trace: List[DebateRound] = Field(default_factory=list)
@@ -20,6 +21,7 @@ class PlannerState(BaseModel):
         return {
             "trip_request": self.trip_request.model_dump() if self.trip_request else None,
             "evidence": [e.model_dump() for e in self.evidence],
+            "cost_breakdown": self.cost_breakdown.model_dump() if self.cost_breakdown else None,
             "debate_trace": [r.model_dump() for r in self.debate_trace],
             "final_itinerary": self.final_itinerary.model_dump() if self.final_itinerary else None,
             "final_rationale": self.final_rationale,

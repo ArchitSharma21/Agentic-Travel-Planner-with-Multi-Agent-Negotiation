@@ -238,7 +238,15 @@ def build_gradio_app(planner):
         trace_pretty = format_trace(data.get("debate_trace", []))
         rationale = "\n".join(data.get("final_rationale", []))
         rejected = "\n".join(data.get("rejected_alternatives", []))
-        errors = "\n".join(data.get("errors", []))
+        diagnostic_lines = list(data.get("errors", []))
+        cost_breakdown = data.get("cost_breakdown") or {}
+        if cost_breakdown:
+            diagnostic_lines.append(
+                "Pricing: "
+                f"{cost_breakdown.get('total')} {cost_breakdown.get('currency')} "
+                f"via {cost_breakdown.get('pricing_mode')}"
+            )
+        errors = "\n".join(diagnostic_lines)
 
         yield done_status_html(), final_pretty, trace_pretty, rationale, rejected, errors
 
@@ -282,8 +290,7 @@ def build_gradio_app(planner):
             api_key = gr.Textbox(
                 label="Optional API key",
                 type="password",
-                placeholder="Leave blank to use the shared demo key",
-                info="Only needed for extra live runs or better reliability.",
+                placeholder="Only needed for extra live runs",
             )
             demo_mode = gr.Checkbox(
                 label="Demo mode",

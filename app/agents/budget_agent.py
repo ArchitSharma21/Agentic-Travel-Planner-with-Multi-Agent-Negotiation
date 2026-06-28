@@ -12,11 +12,13 @@ class BudgetAgent(BaseAgent):
         trip_request: dict,
         evidence: list[dict],
         prior_proposals: list[dict],
+        pricing_context: dict | None = None,
         llm_config: dict | None = None,
     ) -> AgentProposal:
         payload = {
             "trip_request": trip_request,
             "evidence": evidence,
+            "pricing_context": pricing_context or {},
             "prior_proposals": prior_proposals,
         }
         data = self.invoke_json(payload, llm_config=llm_config)

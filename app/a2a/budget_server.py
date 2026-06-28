@@ -12,5 +12,6 @@ async def handle_budget_task(payload: dict) -> dict:
         trip_request=task.trip_request,
         evidence=task.evidence,
         prior_proposals=task.prior_proposals,
+        pricing_context=task.pricing_context,
     )
     return proposal.model_dump()

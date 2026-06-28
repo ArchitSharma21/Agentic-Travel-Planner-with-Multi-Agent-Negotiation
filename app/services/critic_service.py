@@ -10,6 +10,7 @@ agent = CriticAgent()
 class CriticRequest(BaseModel):
     trip_request: dict
     evidence: list[dict] = Field(default_factory=list)
+    pricing_context: dict = Field(default_factory=dict)
     proposals: list[dict] = Field(default_factory=list)
 
 
@@ -18,5 +19,6 @@ async def review(payload: CriticRequest) -> dict:
     return agent.review(
         trip_request=payload.trip_request,
         evidence=payload.evidence,
+        pricing_context=payload.pricing_context,
         proposals=payload.proposals,
     )

@@ -50,6 +50,7 @@ async def budget_rpc(req: JSONRPCRequest):
             trip_request=req.params.get("trip_request", {}),
             evidence=req.params.get("evidence", []),
             prior_proposals=req.params.get("prior_proposals", []),
+            pricing_context=req.params.get("pricing_context", {}),
         )
         return _jsonrpc_result(req.id, proposal.model_dump())
     except Exception as exc:
@@ -66,6 +67,7 @@ async def experience_rpc(req: JSONRPCRequest):
             trip_request=req.params.get("trip_request", {}),
             evidence=req.params.get("evidence", []),
             prior_proposals=req.params.get("prior_proposals", []),
+            pricing_context=req.params.get("pricing_context", {}),
         )
         return _jsonrpc_result(req.id, proposal.model_dump())
     except Exception as exc:
@@ -82,6 +84,7 @@ async def time_rpc(req: JSONRPCRequest):
             trip_request=req.params.get("trip_request", {}),
             evidence=req.params.get("evidence", []),
             prior_proposals=req.params.get("prior_proposals", []),
+            pricing_context=req.params.get("pricing_context", {}),
         )
         return _jsonrpc_result(req.id, proposal.model_dump())
     except Exception as exc:
@@ -98,6 +101,7 @@ async def critic_rpc(req: JSONRPCRequest):
             trip_request=req.params.get("trip_request", {}),
             evidence=req.params.get("evidence", []),
             proposals=req.params.get("proposals", []),
+            pricing_context=req.params.get("pricing_context", {}),
         )
         return _jsonrpc_result(req.id, result)
     except Exception as exc:

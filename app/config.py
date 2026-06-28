@@ -45,6 +45,16 @@ class Settings(BaseModel):
             "/tmp/agentic_travel_planner_usage.json",
         )
     )
+    travel_context_mode: str = Field(default=os.getenv("TRAVEL_CONTEXT_MODE", "mcp"))
+    travel_context_mcp_url: str = Field(
+        default=os.getenv("TRAVEL_CONTEXT_MCP_URL", "http://127.0.0.1:7860/mcp/protocol")
+    )
+    travel_context_mcp_timeout_seconds: float = Field(
+        default=float(os.getenv("TRAVEL_CONTEXT_MCP_TIMEOUT_SECONDS", "4"))
+    )
+    search_provider: str = Field(default=os.getenv("SEARCH_PROVIDER", "auto"))
+    brave_search_api_key: str = Field(default=os.getenv("BRAVE_SEARCH_API_KEY", ""))
+    tavily_api_key: str = Field(default=os.getenv("TAVILY_API_KEY", ""))
 
     def validate_required(self) -> None:
         # API keys can be supplied per request from the UI, so startup should not

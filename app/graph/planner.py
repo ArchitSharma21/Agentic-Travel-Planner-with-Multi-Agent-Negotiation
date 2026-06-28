@@ -11,8 +11,8 @@ from app.models.agent import AgentProposal, DebateRound
 from app.models.state import PlannerState
 from app.models.trip import FinalItinerary, TripRequest, WebEvidence
 from app.prompts import FINAL_MERGE_PROMPT
-from app.tools.estimation import estimate_base_trip_cost
-from app.tools.search import SearchTool
+from app.tools.estimation import estimate_base_trip_cost, estimate_trip_cost_breakdown
+from app.tools.travel_context import TravelContextClient
 from app.a2a.discovery import AgentDirectory
 from app.usage_limits import ensure_gemini_server_budget
 
@@ -23,7 +23,7 @@ from a2a.types import AgentCard, SendMessageRequest, MessageSendParams
 class TravelPlanner:
     def __init__(self) -> None:
         self.intent_agent = IntentAgent()
-        self.search_tool = SearchTool()
+        self.travel_context_client = TravelContextClient()
 
         self.agent_directory = AgentDirectory()
         self._a2a_httpx_client: httpx.AsyncClient | None = None
@@ -121,6 +121,7 @@ class TravelPlanner:
     def _run_demo(self, raw_user_input: str) -> PlannerState:
         trip_request = self._demo_trip_request(raw_user_input)
         evidence = self._demo_evidence(trip_request.destination or settings.default_destination)
+        cost_breakdown = estimate_trip_cost_breakdown(trip_request)
         proposals = self._demo_proposals(trip_request)
         critic_notes = [
             "Budget, experience, and time proposals are consistent with the stated constraints.",
@@ -132,6 +133,7 @@ class TravelPlanner:
             raw_user_input=raw_user_input,
             trip_request=trip_request,
             evidence=evidence,
+            cost_breakdown=cost_breakdown,
             proposals=proposals,
             debate_trace=[
                 DebateRound(
@@ -146,8 +148,10 @@ class TravelPlanner:
         )
 
         merged = self._demo_final_itinerary(trip_request)
+        merged = self._apply_deterministic_costs(merged, trip_request, cost_breakdown)
         merged = self._normalize_final_itinerary_output(merged, trip_request)
         merged = self._fill_empty_days(merged, trip_request)
+        merged = self._apply_deterministic_costs(merged, trip_request, cost_breakdown)
         state.final_itinerary = FinalItinerary(**merged)
         state.final_rationale = self._build_rationale(state)
         state.rejected_alternatives = self._build_rejections(state)
@@ -385,6 +389,24 @@ class TravelPlanner:
 
         return compact
 
+    def _compact_cost_breakdown(self, cost_breakdown) -> dict:
+        if cost_breakdown is None:
+            return {}
+        if hasattr(cost_breakdown, "model_dump"):
+            cost_breakdown = cost_breakdown.model_dump()
+        facts = cost_breakdown.get("price_facts", []) or []
+        return {
+            "lodging": cost_breakdown.get("lodging"),
+            "meals": cost_breakdown.get("meals"),
+            "local_transport": cost_breakdown.get("local_transport"),
+            "activities": cost_breakdown.get("activities"),
+            "total": cost_breakdown.get("total"),
+            "currency": cost_breakdown.get("currency"),
+            "pricing_mode": cost_breakdown.get("pricing_mode"),
+            "notes": (cost_breakdown.get("notes", []) or [])[:4],
+            "price_facts": facts[:8],
+        }
+
     def _fallback_agent_proposal(
         self,
         agent_name: str,
@@ -518,6 +540,133 @@ class TravelPlanner:
         merged["daily_plan"] = filled
         return merged
 
+    def _apply_deterministic_costs(self, merged: dict, trip_request, cost_breakdown) -> dict:
+        if not isinstance(merged, dict) or cost_breakdown is None:
+            return merged
+
+        if hasattr(cost_breakdown, "model_dump"):
+            breakdown = cost_breakdown.model_dump()
+        else:
+            breakdown = cost_breakdown
+
+        currency = breakdown.get("currency") or self._infer_currency(trip_request=trip_request)
+        total = breakdown.get("total")
+        if total is None:
+            return merged
+
+        merged["cost_currency"] = currency
+        merged["estimated_total_cost"] = round(float(total), 2)
+        warnings = merged.setdefault("warnings", [])
+        deterministic_warning = (
+            "Estimated total cost was recomputed by the deterministic pricing engine from lodging, meals, local transport, and activities."
+        )
+        if deterministic_warning not in warnings:
+            warnings.append(deterministic_warning)
+        pricing_mode = breakdown.get("pricing_mode")
+        pricing_warning = f"Pricing mode: {pricing_mode}." if pricing_mode else None
+        if pricing_warning and pricing_warning not in warnings:
+            warnings.append(pricing_warning)
+
+        budget_total = self._trip_value(trip_request, "budget_total")
+        if budget_total and float(total) > float(budget_total):
+            warnings.append(
+                f"Deterministic estimate exceeds the stated budget ({round(float(total), 2)} {currency} > {round(float(budget_total), 2)} {currency})."
+            )
+
+        daily_plan = merged.get("daily_plan") or []
+        num_days = self._trip_value(trip_request, "num_days", len(daily_plan) or 1) or 1
+        if isinstance(daily_plan, list) and daily_plan:
+            day_costs = self._distribute_day_costs(daily_plan, breakdown, int(num_days))
+            for index, day in enumerate(daily_plan):
+                if isinstance(day, dict):
+                    day["estimated_day_cost"] = day_costs[index]
+
+        return merged
+
+    def _distribute_day_costs(
+        self,
+        daily_plan: list,
+        cost_breakdown: dict,
+        num_days: int,
+    ) -> list[float]:
+        total = float(cost_breakdown.get("total") or 0.0)
+        if total <= 0 or num_days <= 0:
+            return [0.0 for _ in daily_plan]
+
+        lodging = float(cost_breakdown.get("lodging") or 0.0)
+        meals = float(cost_breakdown.get("meals") or 0.0)
+        transport = float(cost_breakdown.get("local_transport") or 0.0)
+        activity_budget = max(0.0, float(cost_breakdown.get("activities") or 0.0))
+        fixed_daily = (lodging + meals + transport) / num_days
+
+        weights = [self._day_activity_weight(day) for day in daily_plan]
+        total_weight = sum(weights) or float(len(daily_plan))
+
+        raw_costs = [
+            fixed_daily + (activity_budget * weight / total_weight)
+            for weight in weights
+        ]
+        rounded = [round(value, 2) for value in raw_costs]
+
+        drift = round(total - sum(rounded), 2)
+        if rounded and abs(drift) >= 0.01:
+            rounded[-1] = round(rounded[-1] + drift, 2)
+
+        return rounded
+
+    def _day_activity_weight(self, day: dict) -> float:
+        if not isinstance(day, dict):
+            return 1.0
+
+        chunks: list[str] = []
+        for key in ("morning", "afternoon", "evening"):
+            value = day.get(key) or []
+            if isinstance(value, list):
+                chunks.extend(str(item).lower() for item in value)
+            else:
+                chunks.append(str(value).lower())
+        text = " ".join(chunks)
+
+        weight = 1.0
+        paid_keywords = {
+            "museum": 1.0,
+            "gallery": 0.8,
+            "castle": 0.8,
+            "palace": 0.8,
+            "tower": 0.7,
+            "tour": 0.9,
+            "canal": 0.5,
+            "card": 0.5,
+            "ticket": 0.6,
+            "climb": 0.4,
+            "opera": 0.4,
+        }
+        low_cost_keywords = {
+            "walk": 0.25,
+            "explore": 0.2,
+            "harbor": 0.15,
+            "garden": 0.15,
+            "park": 0.15,
+            "library": 0.15,
+            "market": 0.2,
+            "bakery": 0.15,
+            "street food": 0.2,
+        }
+
+        for keyword, bump in paid_keywords.items():
+            if keyword in text:
+                weight += bump
+        for keyword, bump in low_cost_keywords.items():
+            if keyword in text:
+                weight += bump
+
+        if "departure" in text:
+            weight *= 0.75
+        if "arrival" in text:
+            weight *= 0.9
+
+        return max(0.4, round(weight, 3))
+
     async def _run_async(
         self,
         raw_user_input: str,
@@ -532,6 +681,10 @@ class TravelPlanner:
 
         await self._ensure_discovered_clients()
         state = PlannerState(raw_user_input=raw_user_input)
+        state.errors.append(
+            f"Planned LLM calls for this run: {self._expected_llm_calls_per_plan()} "
+            "(intent, 3 specialists, critic, final merge). Search and pricing use 0 LLM calls."
+        )
 
         t0 = time.time()
         trip_request = self.intent_agent.parse_request(
@@ -545,31 +698,34 @@ class TravelPlanner:
             )
         if not trip_request.num_days:
             trip_request.num_days = 3
+        if not trip_request.budget_currency:
+            trip_request.budget_currency = self._infer_currency(raw_user_input)
         state.trip_request = trip_request
         print(f"[timing] intent_agent: {time.time() - t0:.2f}s")
 
         t0 = time.time()
-        try:
-            evidence = self.search_tool.search_destination(
-                destination=trip_request.destination,
-                travel_style=trip_request.travel_style,
-            )
-        except Exception as exc:
-            evidence = []
-            state.errors.append(f"Search failed: {str(exc)}")
-        state.evidence = evidence
-        print(f"[timing] search: {time.time() - t0:.2f}s")
+        travel_context = await self.travel_context_client.build(trip_request)
+        state.evidence = travel_context.evidence
+        state.cost_breakdown = travel_context.cost_breakdown
+        state.errors.append(f"Travel context source: {travel_context.source}.")
+        for diagnostic in travel_context.diagnostics:
+            state.errors.append(diagnostic)
+        evidence = travel_context.evidence
+        cost_breakdown = travel_context.cost_breakdown
+        print(f"[timing] travel_context: {time.time() - t0:.2f}s")
 
         compact_evidence = [
             {"title": e.title, "snippet": e.snippet, "url": e.url}
             for e in evidence[:3]
         ]
+        pricing_context = self._compact_cost_breakdown(cost_breakdown)
         trip_payload = trip_request.model_dump()
 
         t0 = time.time()
         proposals = await self._generate_round_proposals_async(
             trip_request=trip_payload,
             evidence=compact_evidence,
+            pricing_context=pricing_context,
             prior_proposals=[],
             llm_config=llm_config,
         )
@@ -596,6 +752,7 @@ class TravelPlanner:
             critic_result = await self._critic_review_async(
                 trip_request=trip_payload,
                 evidence=compact_evidence,
+                pricing_context=pricing_context,
                 proposals=[self._compact_proposal(p) for p in proposals],
                 llm_config=llm_config,
             )
@@ -641,6 +798,7 @@ class TravelPlanner:
                 merged = self._merge_final(
                     trip_request=trip_payload,
                     evidence=compact_evidence,
+                    pricing_context=pricing_context,
                     proposals=[self._compact_proposal(p) for p in scored_proposals],
                     debate_trace=[r.model_dump() for r in state.debate_trace],
                     llm_config=llm_config,
@@ -659,11 +817,10 @@ class TravelPlanner:
                 }
         print(f"[timing] final_merge: {time.time() - t0:.2f}s")
 
-        if merged.get("estimated_total_cost") is None:
-            merged["estimated_total_cost"] = estimate_base_trip_cost(trip_request)
-
+        merged = self._apply_deterministic_costs(merged, trip_request, cost_breakdown)
         merged = self._normalize_final_itinerary_output(merged, trip_request)
         merged = self._fill_empty_days(merged, trip_request)
+        merged = self._apply_deterministic_costs(merged, trip_request, cost_breakdown)
 
         state.final_itinerary = FinalItinerary(**merged)
         state.final_rationale = self._build_rationale(state)
@@ -743,12 +900,14 @@ class TravelPlanner:
         self,
         trip_request: dict,
         evidence: list[dict],
+        pricing_context: dict,
         prior_proposals: list[dict],
         llm_config: dict | None = None,
     ) -> list[AgentProposal]:
         payload = {
             "trip_request": trip_request,
             "evidence": evidence,
+            "pricing_context": pricing_context,
             "prior_proposals": prior_proposals,
             "llm_config": llm_config or {},
         }
@@ -806,10 +965,18 @@ class TravelPlanner:
             time_p,
         ]
 
-    async def _critic_review_async(self, trip_request, evidence, proposals, llm_config=None):
+    async def _critic_review_async(
+        self,
+        trip_request,
+        evidence,
+        pricing_context,
+        proposals,
+        llm_config=None,
+    ):
         payload = {
             "trip_request": trip_request,
             "evidence": evidence,
+            "pricing_context": pricing_context,
             "proposals": proposals,
             "llm_config": llm_config or {},
         }
@@ -947,6 +1114,7 @@ class TravelPlanner:
         self,
         trip_request: dict,
         evidence: list[dict],
+        pricing_context: dict,
         proposals: list[dict],
         debate_trace: list[dict],
         llm_config: dict | None = None,
@@ -966,6 +1134,7 @@ class TravelPlanner:
                 "notes": trip_request.get("notes"),
             },
             "evidence": evidence[:3],
+            "pricing_context": pricing_context,
             "proposals": proposals,
             "critic_notes": self._critic_notes_from_trace(debate_trace),
         }
@@ -1043,6 +1212,11 @@ class TravelPlanner:
             )
             lines.append(
                 f"{proposal.agent_name} emphasized {proposal.objective}; {score_str}."
+            )
+        if state.cost_breakdown:
+            lines.append(
+                "Cost estimate was computed by the deterministic pricing engine "
+                f"({state.cost_breakdown.pricing_mode}) rather than model-generated prices."
             )
         lines.append("Final itinerary balances cost, experience quality, and scheduling realism.")
         lines.append("Critic feedback was incorporated before final merge.")

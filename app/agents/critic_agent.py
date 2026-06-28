@@ -11,11 +11,13 @@ class CriticAgent(BaseAgent):
         trip_request: dict,
         evidence: list[dict],
         proposals: list[dict],
+        pricing_context: dict | None = None,
         llm_config: dict | None = None,
     ) -> dict:
         payload = {
             "trip_request": trip_request,
             "evidence": evidence,
+            "pricing_context": pricing_context or {},
             "proposals": proposals,
         }
         data = self.invoke_json(payload, llm_config=llm_config)

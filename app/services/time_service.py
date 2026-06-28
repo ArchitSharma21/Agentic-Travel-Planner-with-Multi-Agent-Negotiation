@@ -10,6 +10,7 @@ agent = TimeOptimizerAgent()
 class ProposalRequest(BaseModel):
     trip_request: dict
     evidence: list[dict] = Field(default_factory=list)
+    pricing_context: dict = Field(default_factory=dict)
     prior_proposals: list[dict] = Field(default_factory=list)
 
 
@@ -19,5 +20,6 @@ async def propose(payload: ProposalRequest) -> dict:
         trip_request=payload.trip_request,
         evidence=payload.evidence,
         prior_proposals=payload.prior_proposals,
+        pricing_context=payload.pricing_context,
     )
     return proposal.model_dump()

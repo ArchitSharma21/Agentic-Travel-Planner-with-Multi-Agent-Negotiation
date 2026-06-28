@@ -24,6 +24,30 @@ class WebEvidence(BaseModel):
     category: str
 
 
+class PriceFact(BaseModel):
+    category: str
+    amount_low: float
+    amount_mid: float
+    amount_high: float
+    currency: str
+    unit: str
+    source_name: str
+    source_url: Optional[str] = None
+    confidence: float = 0.5
+
+
+class TripCostBreakdown(BaseModel):
+    lodging: float = 0.0
+    meals: float = 0.0
+    local_transport: float = 0.0
+    activities: float = 0.0
+    total: float = 0.0
+    currency: str = "EUR"
+    pricing_mode: str = "heuristic"
+    notes: List[str] = Field(default_factory=list)
+    price_facts: List[PriceFact] = Field(default_factory=list)
+
+
 class ActivityOption(BaseModel):
     name: str
     estimated_cost: Optional[float] = None
